@@ -11,4 +11,4 @@ pdfplumber==0.11.0
 networkx==3.2.1
 shapely==2.1.0
 opencv-python-headless==4.9.0.80
-numpy==2.1.0
+numpy==1.26.4

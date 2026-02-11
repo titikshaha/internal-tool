@@ -19,7 +19,6 @@ import pdfplumber
 import pytesseract
 import networkx as nx
 import numpy as np
-import cv2
 import re
 import math
 import os
@@ -30,6 +29,13 @@ from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, asdict
 from shapely.geometry import Polygon, MultiPoint, LineString, Point
 from shapely.ops import unary_union
+
+try:
+    import cv2
+    CV2_IMPORT_ERROR = ""
+except Exception as exc:  # pragma: no cover - environment dependent
+    cv2 = None  # type: ignore[assignment]
+    CV2_IMPORT_ERROR = str(exc)
 
 
 # ============================================
@@ -330,6 +336,13 @@ def extract_text_ocr(fitz_page) -> str:
     # Convert to PIL Image
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
+    # If OpenCV is unavailable, use direct OCR on the RGB image.
+    if cv2 is None:
+        try:
+            return pytesseract.image_to_string(img)
+        except Exception:
+            return ""
+
     # Convert to grayscale and generate multiple preprocessing variants.
     cv_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
     ocr_inputs = build_ocr_variants(cv_img)
@@ -351,6 +364,9 @@ def build_ocr_variants(gray: np.ndarray) -> List[np.ndarray]:
     """
     Build OCR image variants to improve text capture on scans and noisy drawings.
     """
+    if cv2 is None:
+        return [gray]
+
     denoised = cv2.fastNlMeansDenoising(gray, h=10)
     _, otsu = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     adaptive = cv2.adaptiveThreshold(
@@ -549,6 +565,9 @@ def extract_walls_from_raster(fitz_page) -> List[dict]:
     Detect probable wall line segments from rendered page image using Canny + HoughLinesP.
     Returns line dicts in PDF point coordinates.
     """
+    if cv2 is None:
+        return []
+
     matrix = fitz.Matrix(2, 2)
     pix = fitz_page.get_pixmap(matrix=matrix, alpha=False)
     rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)

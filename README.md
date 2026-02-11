@@ -1,68 +1,86 @@
 # internal-tool
 
-Short internal tool for extracting data from DXF/PDF/OCR sources and serving a FastAPI API for testing and development.
+FastAPI service for parsing floor plan files (`pdf`, `dxf`, `png/jpg`) with:
+- core extraction pipeline
+- supervised phase-1 training/inference scaffold
+- unsupervised image parsing flow
 
 ## Requirements
-- Python 3.11+ (Windows tested)
-- `requirements.txt` (use the project venv)
+- Python `3.12` (64-bit)
 
 ## Setup
-1. Create and activate a virtual environment (PowerShell):
-
 ```powershell
-python -m venv venv
-& .\venv\Scripts\Activate.ps1
-```
-
-2. Install dependencies:
-
-```powershell
+py -3.12-64 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-## Run the app
-
-Start the FastAPI server (use `python -m uvicorn` to avoid broken console scripts):
-
+## Run
 ```powershell
-& .\venv\Scripts\Activate.ps1
 python -m uvicorn app.main:app --reload
 ```
 
-Open http://127.0.0.1:8000 in your browser.
-
-## Tests
-
-Run the test suite:
-
+## Test
 ```powershell
-& .\venv\Scripts\Activate.ps1
-pytest -q
+python -m pytest -q
+python -m pytest -q tests/test_basic.py
+python -m pytest -q tests/test_supervised_pipeline.py
+python -m pytest -q tests/test_unsupervised_image_parser.py
 ```
 
-## Git push (HTTPS) — common auth issue on Windows
-
-If `git push` fails with `Permission denied` or a 403 referencing another account, remove the cached credential in Windows Credential Manager and use a Personal Access Token (PAT):
-
-1. Open Credential Manager → Windows Credentials → remove any `git:` or `github.com` entries for the wrong user.
-2. Create a PAT in GitHub (Settings → Developer settings → Personal access tokens) with `repo` scope.
-3. Push and enter your GitHub username and the PAT as the password:
-
-```powershell
-git push -u origin main
-# Username: <your-username>
-# Password: <your-PAT>
+## Supervised Phase 1
+Dataset layout:
+```text
+dataset_root/
+  images/
+    sample_1.png
+  annotations/
+    sample_1.json
 ```
 
-## Git push (SSH) — alternative (one-time setup)
-
-```powershell
-# generate a key
-ssh-keygen -t ed25519 -C "your-email@example.com"
-# copy the public key to GitHub Settings → SSH and GPG keys
-git remote set-url origin git@github.com:your-username/internal-tool.git
-git push -u origin main
+Annotation format:
+```json
+{
+  "file_name": "sample_1.png",
+  "width": 320,
+  "height": 240,
+  "objects": [
+    {"label": "room", "bbox": [30, 40, 110, 150]}
+  ]
+}
 ```
 
-## Notes
-- If you hit compiled-extension errors (NumPy / OpenCV), try installing a matching wheel as done in this project (e.g. `opencv-python-headless` compatible with the installed `numpy`).
+Validate dataset:
+```powershell
+curl -X POST "http://127.0.0.1:8000/model/validate-supervised-dataset" `
+  -H "Content-Type: application/json" `
+  -d "{\"dataset_dir\":\"C:\\\\path\\\\to\\\\dataset_root\"}"
+```
+
+Train model:
+```powershell
+curl -X POST "http://127.0.0.1:8000/model/train-supervised" `
+  -H "Content-Type: application/json" `
+  -d "{\"dataset_dir\":\"C:\\\\path\\\\to\\\\dataset_root\",\"output_path\":\"app/models/supervised_baseline.json\",\"min_samples\":1}"
+```
+
+Infer on image:
+```powershell
+curl -X POST "http://127.0.0.1:8000/parse/image-supervised?model_path=app/models/supervised_baseline.json" `
+  -F "file=@C:\\path\\to\\sample.png"
+```
+
+## Unsupervised Flow
+Train:
+```powershell
+curl -X POST "http://127.0.0.1:8000/model/train-unsupervised" `
+  -H "Content-Type: application/json" `
+  -d "{\"image_dir\":\"C:\\\\path\\\\to\\\\images\",\"output_path\":\"app/models/unsupervised_codebook.json\",\"clusters\":32}"
+```
+
+Infer:
+```powershell
+curl -X POST "http://127.0.0.1:8000/parse/image-unsupervised?model_path=app/models/unsupervised_codebook.json" `
+  -F "file=@C:\\path\\to\\sample.png"
+```
